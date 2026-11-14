@@ -1,13 +1,18 @@
-"""Evaluate DP, DQN and both MILP variants on identical demand paths.
+"""Evaluate every available method on identical demand paths.
 
-Four methods are compared on the same realised demand sequence:
+This file is the SHARED comparison harness: it is identical in both team
+members' repositories, and it scores whichever policies are present:
 
   DQN                     learned policy, no knowledge of the demand distribution
+                          (only if algorithms/dqn_agent.py + a trained model exist)
   DP                      exact optimal policy, knows the demand distribution
   MILP (rolling forecast) non-anticipative MILP: re-planned every period on a
                           point forecast -- the implementable "optimisation" baseline
   MILP (clairvoyant)      perfect foresight, solved once per episode -- an
                           optimistic lower bound, NOT an implementable policy
+
+The RL part is imported lazily and skipped when absent, so the MILP part can be
+run and demonstrated on its own without torch or a trained network.
 
 Outputs land in results/: episode-level CSV, scenario summaries, figures and a
 JSON file that the slide deck builder reads.
@@ -23,7 +28,6 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 
-from algorithms.dqn_agent import DQNAgent
 from algorithms.dynamic_programming import DynamicProgrammingSolver
 from algorithms.milp_optimizer import solve_milp
 from config import Config
@@ -36,7 +40,27 @@ from utils.visualization import (plot_cost_breakdown, plot_cost_comparison,
                                  plot_scenario_costs)
 
 RESULTS = "results"
-METHODS = ["DQN", "DP", "MILP (rolling forecast)", "MILP (clairvoyant)"]
+METHOD_ORDER = ["DQN", "DP", "MILP (rolling forecast)", "MILP (clairvoyant)"]
+
+
+def load_dqn_agent(cfg, model_path):
+    """Return a trained DQN agent, or None when the RL part is not in this repo.
+
+    Keeping this import local (instead of at module level) is what lets the same
+    harness run in both team members' repositories: with the RL files present it
+    evaluates four methods, without them it evaluates the MILP variants and DP.
+    """
+    try:
+        from algorithms.dqn_agent import DQNAgent
+    except ImportError:
+        print("  [skip] DQN: algorithms/dqn_agent.py not present in this repo")
+        return None
+    if not os.path.exists(model_path):
+        print(f"  [skip] DQN: no trained model at {model_path}")
+        return None
+    agent = DQNAgent(cfg)
+    agent.load(model_path)
+    return agent
 
 
 def make_dqn_policy(agent, cfg):
@@ -79,12 +103,13 @@ def evaluate_scenario(scenario_name, cfg, dp, agent, episodes, run_milp=True):
         demand_path, window = builder(rng, cfg, env.values, env.pmf)
 
         timer = {"planner_time_s": 0.0}
-        policies = {
-            "DQN": (make_dqn_policy(agent, cfg), lambda: 0.0),
-            "DP": (lambda t, inv: dp.act(t, inv), lambda: 0.0),
-            "MILP (rolling forecast)": (make_rolling_milp_policy(cfg, cfg.demand_lambda, timer),
-                                        lambda: timer["planner_time_s"]),
-        }
+        policies = {}
+        if agent is not None:
+            policies["DQN"] = (make_dqn_policy(agent, cfg), lambda: 0.0)
+        policies["DP"] = (lambda t, inv: dp.act(t, inv), lambda: 0.0)
+        policies["MILP (rolling forecast)"] = (
+            make_rolling_milp_policy(cfg, cfg.demand_lambda, timer),
+            lambda: timer["planner_time_s"])
         for method, (policy, elapsed) in policies.items():
             out = run_episode(policy, demand_path, cfg)
             out["window_cost"] = float(sum(p["cost"] for p in out["periods"][window]))
@@ -128,10 +153,7 @@ def evaluate(config=None, episodes=None, scenarios=None, run_milp=True,
     dp_value, _ = dp.solve()
     dp_time = time.perf_counter() - t0
 
-    agent = DQNAgent(cfg)
-    if not os.path.exists(model_path):
-        raise FileNotFoundError("Train DQN first: python -m experiments.train_dqn")
-    agent.load(model_path)
+    agent = load_dqn_agent(cfg, model_path)
 
     frames, trajectories = [], {}
     for name in scenarios:
@@ -158,7 +180,8 @@ def evaluate(config=None, episodes=None, scenarios=None, run_milp=True,
         "dp_expected_cost": dp_value,
         "dp_solve_time_s": dp_time,
         "scenarios": {sc: SCENARIO_LABELS.get(sc, sc) for sc in scenarios},
-        "methods": METHODS,
+        "methods": [m for m in METHOD_ORDER
+                    if m in summaries[scenarios[0]]],
         "summaries": summaries,
         "episodes_per_scenario": n,
     }
@@ -194,8 +217,7 @@ def rebuild_episode_figures(episodes=6):
     env = InventoryEnv(cfg, seed=cfg.seed)
     dp = DynamicProgrammingSolver(cfg, env.values, env.pmf)
     dp.solve()
-    agent = DQNAgent(cfg)
-    agent.load(os.path.join(RESULTS, "dqn_model.pt"))
+    agent = load_dqn_agent(cfg, os.path.join(RESULTS, "dqn_model.pt"))
     _, trajectories = evaluate_scenario("Exp1_stationary", cfg, dp, agent,
                                         episodes, run_milp=True)
     plot_inventory_trajectories(trajectories, os.path.join(RESULTS, "inventory_trajectories.png"))

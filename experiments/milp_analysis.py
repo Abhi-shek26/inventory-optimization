@@ -5,8 +5,7 @@ Produces
     results/milp_bnb_stats.csv           Branch-and-Bound node statistics
     results/milp_big_m.csv               tight vs loose big-M (LP bound + nodes)
     results/milp_fixed_cost_sensitivity.csv
-    results/milp_wagner_whitin_check.csv
-    results/milp_analysis.json           everything the deck builder needs
+    results/milp_analysis.json           all numbers, machine readable
     results/milp_*.png                   figures
 """
 
@@ -23,7 +22,6 @@ import pulp
 
 from algorithms.branch_and_bound import branch_and_bound
 from algorithms.dynamic_programming import DynamicProgrammingSolver
-from algorithms.lot_sizing import wagner_whitin_cost
 from algorithms.milp_optimizer import (_build_model, _solve, solve_milp)
 from config import Config
 from environment import InventoryEnv
@@ -196,34 +194,12 @@ def fixed_cost_sensitivity(cfg, k_values=(0.0, 10.0, 25.0, 50.0, 100.0),
     return rows
 
 
-# ------------------------------------------------ 5. Wagner-Whitin verification
-def wagner_whitin_check(cfg, n_paths=8):
-    """With capacity and shortage penalties switched off, the MILP must equal WW."""
-    off = replace(cfg, max_order=10_000, max_inventory=10_000, shortage_cost=1e6)
-    env = InventoryEnv(cfg, seed=cfg.seed)
-    rng = np.random.default_rng(cfg.seed + 17)
-    rows = []
-    for i in range(n_paths):
-        demand = rng.choice(env.values, size=cfg.horizon, p=env.pmf).astype(int)
-        milp = solve_milp(demand, off)
-        ww = wagner_whitin_cost(demand, off)
-        rows.append({"instance": i,
-                     "demand_total": int(demand.sum()),
-                     "milp_cost": milp["cost"],
-                     "wagner_whitin_cost": ww["cost"],
-                     "difference": milp["cost"] - ww["cost"],
-                     "milp_orders": milp["num_orders"],
-                     "ww_orders": len(ww["order_periods"])})
-    max_diff = max(abs(r["difference"]) for r in rows)
-    return rows, max_diff
-
-
 def run(config=None):
     cfg = config or Config()
     os.makedirs(RESULTS, exist_ok=True)
     env = InventoryEnv(cfg, seed=cfg.seed)
 
-    print("1/5 worked example: enumerating all 2^4 setup patterns ...")
+    print("1/4 worked example: enumerating all 2^4 setup patterns ...")
     small = small_instance_analysis(cfg)
     import pandas as pd
     pd.DataFrame(small["patterns"]).to_csv(
@@ -232,7 +208,7 @@ def run(config=None):
           f"MILP = {small['milp_cost']:.2f}, "
           f"B&B = {small['bnb_cost']:.2f} in {small['bnb_nodes']} nodes")
 
-    print("2/5 LP relaxation gap and Branch-and-Bound node counts ...")
+    print("2/4 LP relaxation gap and Branch-and-Bound node counts ...")
     gaps, bnb_rows, trace = gap_and_node_analysis(cfg)
     pd.DataFrame(bnb_rows).to_csv(os.path.join(RESULTS, "milp_bnb_stats.csv"), index=False)
     plot_integrality_gap(gaps, os.path.join(RESULTS, "milp_integrality_gap.png"))
@@ -241,21 +217,16 @@ def run(config=None):
                        title=(f"Branch and Bound on one demand path "
                               f"({trace['nodes']} nodes)"))
 
-    print("3/5 tight vs loose big-M ...")
+    print("3/4 tight vs loose big-M ...")
     big_m_rows = big_m_study(cfg)
     pd.DataFrame(big_m_rows).to_csv(os.path.join(RESULTS, "milp_big_m.csv"), index=False)
     plot_big_m_comparison(big_m_rows, os.path.join(RESULTS, "milp_big_m.png"))
 
-    print("4/5 fixed ordering cost sensitivity ...")
+    print("4/4 fixed ordering cost sensitivity ...")
     k_rows = fixed_cost_sensitivity(cfg)
     k_frame = pd.DataFrame(k_rows)
     k_frame.to_csv(os.path.join(RESULTS, "milp_fixed_cost_sensitivity.csv"), index=False)
     plot_fixed_cost_sensitivity(k_frame, os.path.join(RESULTS, "milp_fixed_cost.png"))
-
-    print("5/5 Wagner-Whitin cross-check ...")
-    ww_rows, max_diff = wagner_whitin_check(cfg)
-    pd.DataFrame(ww_rows).to_csv(os.path.join(RESULTS, "milp_wagner_whitin_check.csv"),
-                                 index=False)
 
     payload = {
         "small_instance": small,
@@ -271,8 +242,6 @@ def run(config=None):
                 if bnb_rows else 0.0},
         "big_m": big_m_rows,
         "fixed_cost": k_rows,
-        "wagner_whitin": {"max_abs_difference": float(max_diff),
-                          "instances": len(ww_rows)},
         "config": {k: (list(v) if isinstance(v, tuple) else v)
                    for k, v in cfg.__dict__.items()},
     }
@@ -282,7 +251,6 @@ def run(config=None):
     print(f"\nMean root integrality gap: {np.mean(gaps):.1f}%")
     print(pd.DataFrame(bnb_rows).round(2).to_string(index=False))
     print(pd.DataFrame(big_m_rows).round(2).to_string(index=False))
-    print(f"Wagner-Whitin cross-check: max |MILP - WW| = {max_diff:.6f}")
     print(f"Saved MILP analysis in ./{RESULTS}/")
     return payload
 

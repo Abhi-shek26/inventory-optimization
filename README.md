@@ -1,132 +1,112 @@
-# RL vs. Optimization: Managing Inventory Under Demand Uncertainty
+# Fixed-charge lot sizing as a MILP: formulation, Branch & Bound, and an exact benchmark
 
-A reproducible Python project comparing three ways to run a single-product,
-periodic-review inventory system where demand is uncertain and every order
-carries a **fixed cost**:
+The **MILP part** of the team project *"RL vs. Optimization: Managing Inventory
+Under Demand Uncertainty"*.
 
-| Method | What it knows | Role |
-|---|---|---|
-| **MILP (fixed-charge lot sizing, Branch & Bound)** | the exact demand sequence | optimisation benchmark / perfect-information lower bound |
-| **MILP (rolling forecast)** | a point forecast of the next 5 periods | fair, implementable optimisation baseline (re-plans every period) |
-| **DP (Dynamic Programming)** | the demand *distribution* | exact optimal policy |
-| **DQN (Deep Q-Network)** | nothing but experience | learned policy |
+The single-product, periodic-review inventory problem contains a fixed ordering
+cost `K`, which makes "do we order this period?" a yes/no decision. That is what
+turns the exact model into a **Mixed-Integer Linear Program**, and it is the whole
+subject of this part: the formulation, the big-M link, the LP relaxation, Branch
+and Bound, and what the exact optimum is worth compared with the achievable
+policies.
 
-The MILP part (formulation, big-M, LP relaxation, Branch and Bound) is the
-component documented in depth in [`docs/MILP_EXPLAINED.md`](docs/MILP_EXPLAINED.md).
+The RL (DQN) half of the project belongs to the other team member.
+`experiments/evaluate.py` imports it lazily, so this repository runs and
+demonstrates **three** methods — `DP`, `MILP (rolling forecast)`,
+`MILP (clairvoyant)` — and automatically adds `DQN` in the joint repository where
+the RL files and a trained model exist. Everything shared between the two halves
+is frozen by [docs/TEAM_SYNC.md](docs/TEAM_SYNC.md).
 
 ## Model
 
-Single item, periodic review, lost sales, zero replenishment lead time.
-At period `t` we choose an order `q_t`, then demand `D_t` realises:
+Single item, periodic review, lost sales, zero replenishment lead time. At period
+`t` we choose an order `q_t`, then demand `D_t` realises:
 
-- available: `I_t + q_t`
-- sales: `min(I_t + q_t, D_t)`, lost sales: `max(D_t - I_t - q_t, 0)`
-- ending inventory: `max(0, I_t + q_t - D_t)`
-- period cost: `K·1{q_t>0} + c·q_t + h·I_(t+1) + p·S_t`
+- available `I_t + q_t`; sales `min(I_t + q_t, D_t)`; lost `max(D_t - I_t - q_t, 0)`
+- ending inventory `I_(t+1) = max(0, I_t + q_t - D_t)`
+- period cost `K·1{q_t>0} + c·q_t + h·I_(t+1) + p·S_t`
 
-`K` is what makes the exact model a **MILP** rather than an LP: it introduces a
-binary setup decision `y_t` per period, linked to the quantity by the big-M
-constraint `q_t <= M·y_t`.
+Default instance (`config.py`): `T = 20`, `Imax = 40`, `Qmax = 30`, `K = 25`,
+`c = 2`, `h = 0.5`, `p = 8`, truncated `Poisson(6)` demand on `0..12`
+(the truncation keeps 99.1% of the probability mass; its mean is 5.93).
 
-Default parameters (`config.py`): `T=20`, `Imax=40`, `Qmax=30`, `K=25`, `c=2`,
-`h=0.5`, `p=8`, truncated `Poisson(6)` demand.
+The MILP itself (`algorithms/milp_optimizer.py`):
 
-### Information matters — be explicit about it
-
-DP and DQN are **non-anticipative**: they decide with the present state only.
-The clairvoyant MILP sees the whole future and is therefore an **optimistic
-lower bound**, not a policy. The rolling-forecast MILP is the honest
-optimisation comparison. Do not present the clairvoyant number as achievable.
-
-## Setup
-
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
+```
+min  sum_t ( K*y_t + c*q_t + h*I_t + p*S_t )
+s.t. I_(t-1) + q_t - D_t + S_t = I_t          flow balance
+     q_t <= M * y_t                            big-M (M = min(Qmax, Imax) = 30)
+     0 <= q_t <= Qmax,  0 <= I_t <= Imax
+     0 <= S_t <= D_t,    y_t in {0,1}
 ```
 
-PuLP ships with the CBC solver, which is what actually solves the MILPs.
-`pip install "PuLP==3.*"` — PuLP 4.x changed its variable API and the model code
-here targets the documented 3.x API.
-
-## Run the full pipeline
+## Quickstart — what to run to show the results
 
 ```bash
-python -m experiments.train_dqn        # ~2 min on CPU, writes results/dqn_model.pt
-python -m experiments.evaluate         # 4 methods x 3 scenarios (~3-4 min; MILP is the slow part)
-python -m experiments.milp_analysis    # MILP-only evidence: gaps, B&B nodes, big-M, K sensitivity
-python -m experiments.statistics       # paired t-tests of every method against DP
-python -m presentation.build_deck      # builds the slide deck from the results
+pip install -r requirements.txt          # no torch needed for this part
+
+# 1. The MILP evidence: brute force, LP gap, Branch & Bound, big-M, K sensitivity.
+#    Self-contained, does not touch the RL part. ~2 min
+python -m experiments.milp_analysis
+
+# 2. Comparison on identical demand paths (DP + both MILP variants). ~3-4 min,
+#    because the rolling planner re-solves the MILP 20 times per episode.
+python -m experiments.evaluate
+
+# 3. Paired significance tests against DP. ~2 s
+python -m experiments.statistics
 ```
 
-Optional extras:
+Optional: `python -m experiments.evaluate --figures-only` rebuilds only the
+per-episode trajectory figures.
 
-```bash
-python -m experiments.evaluate --figures-only     # regenerate trajectory figures only
-python -m experiments.sensitivity_analysis        # DP sensitivity to the shortage penalty
-python -m unittest discover -s tests -v           # 14 tests, ~2 s
-```
+In the joint repository (RL files present) you additionally run
+`python -m experiments.train_dqn` before step 2, and step 2 then reports four
+methods.
 
-## What the MILP part produces
+All outputs are written to `./results/`, which is **created automatically** and is
+excluded from git (`.gitignore`). Clone the repo, run the commands, and the folder
+reappears with every CSV, JSON and figure.
 
-| File | Content |
+## What the MILP part establishes
+
+| Claim | Evidence |
 |---|---|
-| `results/milp_small_instance.csv` | exhaustive 2^4 setup-pattern enumeration (brute-force check) |
-| `results/milp_bnb_stats.csv` | B&B nodes, pruned nodes, root LP bound, root gap; cost matches CBC |
-| `results/milp_bnb_trace.png` | bound vs incumbent convergence |
-| `results/milp_integrality_gap.png` | distribution of the root LP relaxation gap |
-| `results/milp_big_m.csv/.png` | tight `M = min(Qmax, Imax)` vs loose `M = 9999` |
-| `results/milp_fixed_cost.png` | how `K` changes cost and the number of orders |
-| `results/milp_wagner_whitin_check.csv` | MILP vs the Wagner-Whitin exact optimum |
-| `results/paired_tests.csv` / `.json` | paired difference vs DP per scenario: mean, 95% CI, p-value, paths won |
+| The formulation is correct, not just "solver said optimal" | `results/milp_small_instance.csv`: all 2⁴ setup patterns enumerated by brute force; MILP returns the same cheapest pattern |
+| The LP relaxation is not a plan | `results/milp_integrality_gap.png`: average root gap ≈ 24% over 20 demand paths |
+| Branch and Bound is implemented correctly | `results/milp_bnb_stats.csv`: same cost as CBC, 127–177 nodes, ~40% of nodes pruned |
+| A tight big-M matters | `results/milp_big_m.csv`: tight `M` → 9.3% root gap; loose `M = 9999` → 55.5% gap, same optimum |
+| `K` is what creates batching | `results/milp_fixed_cost.png`: orders per episode fall as `K` rises; at `K = 0` the problem is a plain LP |
+| What perfect foresight is worth | `results/summary.csv` + `results/paired_tests.csv`: clairvoyant MILP is 9.3% below DP on all 40 paths — an unattainable bound |
+| The implementable MILP is competitive | the rolling-forecast MILP is statistically indistinguishable from DP (−0.1%, p = 0.81) |
 
-Headline numbers from the current run (40 episodes per scenario, `K = 25`):
+## Files
 
-- the LP relaxation sits ~24% below the MILP optimum on average, which is why
-  Branch and Bound is needed rather than rounding;
-- with capacity and shortage penalties disabled the MILP reproduces the
-  Wagner-Whitin optimum exactly (max absolute difference `0`);
-- a loose `M = 9999` keeps the same optimum but weakens the root LP bound from a
-  9% to a 55% gap — the practical reason for the tightest valid `M`;
-- paired test on the same 40 paths: the rolling MILP is statistically
-  indistinguishable from DP (-0.1%, p = 0.81), the DQN is reliably 5.3% dearer
-  (p < 1e-6, better on 5/40 paths), and the clairvoyant MILP is 9.3% below DP on
-  all 40 paths - the value of perfect foresight, unattainable by any policy;
-- the DQN's entire gap is shortage cost (+31 units/episode): one slightly low
-  reorder threshold, not instability.
-
-## Repository layout
-
-```
-config.py                  parameters + tight big-M helper
-environment.py             the simulator (step/cost/fixed-charge accounting)
-algorithms/
-  milp_optimizer.py        fixed-charge MILP: clairvoyant + rolling forecast + LP relaxation
-  branch_and_bound.py      readable Branch and Bound on the y_t, with node trace
-  lot_sizing.py            Wagner-Whitin exact DP (independent verification)
-  dynamic_programming.py   finite-horizon stochastic DP
-  dqn_agent.py             Q-network, replay buffer, target network
-experiments/
-  train_dqn.py             training loop
-  evaluate.py              four methods on identical demand paths
-  demand_scenarios.py      stationary / step-change / high-variance demand
-  milp_analysis.py         all MILP-specific experiments
-utils/
-  simulation.py            one rollout engine + metric summarisation
-  visualization.py         every figure
-docs/MILP_EXPLAINED.md     the MILP part explained from zero, with viva questions
-presentation/              build_deck.py + the generated .pptx (+ PNG previews)
-tests/test_core.py         correctness tests, incl. MILP vs brute force vs Wagner-Whitin
-```
+| File | Role |
+|---|---|
+| `config.py` | every parameter in one place; `setup_big_m()` returns `min(Qmax, Imax)` |
+| `environment.py` | the simulator: physics + cost accounting, incl. the fixed charge |
+| `algorithms/milp_optimizer.py` | **core**: MILP builder, clairvoyant solver, LP relaxation, rolling-forecast planner |
+| `algorithms/branch_and_bound.py` | **core**: readable B&B over the `y_t`, with node statistics and a bound trace |
+| `algorithms/dynamic_programming.py` | stochastic DP — the optimal-policy reference (shared) |
+| `experiments/milp_analysis.py` | all MILP-only experiments and figures |
+| `experiments/evaluate.py` | the shared comparison harness over identical demand paths |
+| `experiments/statistics.py` | paired t-tests and confidence intervals vs DP |
+| `experiments/demand_scenarios.py` | stationary / step-change / high-variance demand |
+| `utils/simulation.py` | one rollout engine + metric summarisation (shared) |
+| `utils/visualization.py` | every figure |
+| `RUNBOOK.md` | command → file → printed output → generated results, step by step |
+| `docs/TEAM_SYNC.md` | the frozen parameters, interface and information protocol shared with the RL part |
 
 ## Assumptions and limitations
 
 - one product, zero lead time, integer units, lost sales (no backorders);
-- demand is drawn from a truncated Poisson — the truncation is explicit and
-  should be reported;
-- the DQN is trained on a single seed and on stationary demand; the scenario
-  experiments therefore measure a *frozen* policy, which is the honest reading;
-- the rolling MILP uses a point forecast, so it ignores demand variance by
-  construction; a scenario-tree stochastic program would be the proper extension;
-- the clairvoyant MILP is a bound, not a policy.
+- demand is a truncated Poisson — stationary by construction, so the RL/DP
+  comparison deliberately excludes seasonality and promotions;
+- the clairvoyant MILP is a bound, never a policy;
+- the rolling MILP uses a point forecast (mean, 5-period lookahead), so it ignores
+  demand variance by construction;
+- Branch and Bound is demonstrated on 4- and 8-period instances; on the full
+  20-period model a naive implementation needs thousands of nodes, which is why
+  production solvers add cutting planes and presolve;
+- single training seed on the RL side, 40 evaluation episodes per scenario.
