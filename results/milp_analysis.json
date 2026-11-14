@@ -1,0 +1,389 @@
+{
+  "small_instance": {
+    "config": {
+      "horizon": 4,
+      "max_order": 12,
+      "max_inventory": 12,
+      "fixed_order_cost": 25.0,
+      "order_cost": 2.0,
+      "holding_cost": 0.5,
+      "shortage_cost": 8.0
+    },
+    "demand": [
+      4,
+      7,
+      3,
+      6
+    ],
+    "patterns": [
+      {
+        "pattern": "0000",
+        "setups": 0,
+        "cost": 160.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0001",
+        "setups": 1,
+        "cost": 149.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0010",
+        "setups": 1,
+        "cost": 134.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0011",
+        "setups": 2,
+        "cost": 156.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0100",
+        "setups": 1,
+        "cost": 116.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0101",
+        "setups": 2,
+        "cost": 115.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0110",
+        "setups": 2,
+        "cost": 117.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "0111",
+        "setups": 3,
+        "cost": 139.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1000",
+        "setups": 1,
+        "cost": 117.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1001",
+        "setups": 2,
+        "cost": 106.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1010",
+        "setups": 2,
+        "cost": 96.5,
+        "feasible": true,
+        "is_optimal": true
+      },
+      {
+        "pattern": "1011",
+        "setups": 3,
+        "cost": 118.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1100",
+        "setups": 2,
+        "cost": 99.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1101",
+        "setups": 3,
+        "cost": 116.5,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1110",
+        "setups": 3,
+        "cost": 118.0,
+        "feasible": true,
+        "is_optimal": false
+      },
+      {
+        "pattern": "1111",
+        "setups": 4,
+        "cost": 140.0,
+        "feasible": true,
+        "is_optimal": false
+      }
+    ],
+    "best_pattern": "1010",
+    "best_cost": 96.5,
+    "milp_cost": 96.5,
+    "milp_orders": [
+      11,
+      0,
+      9,
+      0
+    ],
+    "bnb_cost": 96.5,
+    "bnb_nodes": 19,
+    "bnb_pruned": 4,
+    "bnb_root_bound": 81.66666649999999,
+    "bnb_trace": [
+      [
+        1,
+        81.66666649999999,
+        140.0
+      ],
+      [
+        2,
+        97.33333325,
+        140.0
+      ],
+      [
+        3,
+        124.75,
+        140.0
+      ],
+      [
+        4,
+        136.5,
+        140.0
+      ],
+      [
+        5,
+        160.0,
+        140.0
+      ],
+      [
+        6,
+        149.0,
+        140.0
+      ],
+      [
+        7,
+        134.0,
+        134.0
+      ],
+      [
+        8,
+        100.83333325,
+        134.0
+      ],
+      [
+        9,
+        102.83333325,
+        134.0
+      ],
+      [
+        10,
+        116.5,
+        116.5
+      ],
+      [
+        11,
+        117.0,
+        116.5
+      ],
+      [
+        12,
+        115.5,
+        115.5
+      ],
+      [
+        13,
+        86.16666674999999,
+        115.5
+      ],
+      [
+        14,
+        87.16666674999999,
+        115.5
+      ],
+      [
+        15,
+        94.0,
+        115.5
+      ],
+      [
+        16,
+        117.5,
+        115.5
+      ],
+      [
+        17,
+        106.5,
+        106.5
+      ],
+      [
+        18,
+        99.5,
+        99.5
+      ],
+      [
+        19,
+        96.5,
+        96.5
+      ]
+    ],
+    "bnb_root_fractional_setups": 4
+  },
+  "integrality_gap": {
+    "mean_pct": 24.473497510905233,
+    "median_pct": 24.098428101562348,
+    "min_pct": 20.477075604089215,
+    "max_pct": 27.735690252525256,
+    "paths": 20
+  },
+  "bnb": {
+    "rows": [
+      {
+        "instance": 0,
+        "horizon": 8,
+        "milp_cost": 221.5,
+        "bnb_cost": 221.5,
+        "root_lp_bound": 196.00000025000003,
+        "root_gap_pct": 11.512415237020303,
+        "nodes_explored": 167,
+        "nodes_pruned": 64,
+        "finished": true,
+        "seconds": 10.710397799964994
+      },
+      {
+        "instance": 1,
+        "horizon": 8,
+        "milp_cost": 222.0,
+        "bnb_cost": 222.0,
+        "root_lp_bound": 200.0833335,
+        "root_gap_pct": 9.872372297297293,
+        "nodes_explored": 177,
+        "nodes_pruned": 70,
+        "finished": true,
+        "seconds": 10.872366899973713
+      },
+      {
+        "instance": 2,
+        "horizon": 8,
+        "milp_cost": 279.5,
+        "bnb_cost": 279.5,
+        "root_lp_bound": 253.16666650000002,
+        "root_gap_pct": 9.421586225402498,
+        "nodes_explored": 127,
+        "nodes_pruned": 55,
+        "finished": true,
+        "seconds": 8.26724529999774
+      }
+    ],
+    "mean_nodes": 157.0
+  },
+  "big_m": [
+    {
+      "label": "tight M = min(Qmax, Imax)",
+      "big_m": 12,
+      "milp_cost": 220.66666666666666,
+      "lp_root_bound": 200.08333335833333,
+      "root_gap_pct": 9.327794550604224,
+      "bnb_nodes": 123.0,
+      "bnb_all_finished": true
+    },
+    {
+      "label": "loose M = 9999",
+      "big_m": 9999,
+      "milp_cost": 220.66666666666666,
+      "lp_root_bound": 98.12251225133333,
+      "root_gap_pct": 55.533604719939575,
+      "bnb_nodes": 202.33333333333334,
+      "bnb_all_finished": true
+    }
+  ],
+  "fixed_cost": [
+    {
+      "fixed_order_cost": 0.0,
+      "dp_expected_cost": 288.4563704743378,
+      "milp_mean_cost": 234.16666666666666,
+      "milp_mean_orders": 20.0,
+      "milp_mean_setups_per_10_periods": 10.0
+    },
+    {
+      "fixed_order_cost": 10.0,
+      "dp_expected_cost": 406.94201117256335,
+      "milp_mean_cost": 351.6666666666667,
+      "milp_mean_orders": 7.5,
+      "milp_mean_setups_per_10_periods": 3.75
+    },
+    {
+      "fixed_order_cost": 25.0,
+      "dp_expected_cost": 493.2232425485131,
+      "milp_mean_cost": 439.5,
+      "milp_mean_orders": 4.833333333333333,
+      "milp_mean_setups_per_10_periods": 2.4166666666666665
+    },
+    {
+      "fixed_order_cost": 50.0,
+      "dp_expected_cost": 597.7162641865659,
+      "milp_mean_cost": 553.5416666666666,
+      "milp_mean_orders": 4.333333333333333,
+      "milp_mean_setups_per_10_periods": 2.1666666666666665
+    },
+    {
+      "fixed_order_cost": 100.0,
+      "dp_expected_cost": 790.2076100763572,
+      "milp_mean_cost": 753.375,
+      "milp_mean_orders": 3.75,
+      "milp_mean_setups_per_10_periods": 1.875
+    }
+  ],
+  "wagner_whitin": {
+    "max_abs_difference": 0.0,
+    "instances": 8
+  },
+  "config": {
+    "horizon": 20,
+    "max_inventory": 40,
+    "max_order": 30,
+    "demand_values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "demand_lambda": 6.0,
+    "fixed_order_cost": 25.0,
+    "order_cost": 2.0,
+    "holding_cost": 0.5,
+    "shortage_cost": 8.0,
+    "episodes": 2500,
+    "eval_episodes": 40,
+    "batch_size": 64,
+    "replay_capacity": 30000,
+    "learning_rate": 0.001,
+    "gamma": 0.98,
+    "epsilon_start": 1.0,
+    "epsilon_end": 0.05,
+    "epsilon_decay_steps": 12000,
+    "target_update_steps": 500,
+    "seed": 42
+  }
+}
