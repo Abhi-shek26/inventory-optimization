@@ -1,21 +1,12 @@
 """Evaluate every available method on identical demand paths.
 
-This file is the SHARED comparison harness: it is identical in both team
-members' repositories, and it scores whichever policies are present:
-
-  DQN                     learned policy, no knowledge of the demand distribution
-                          (only if algorithms/dqn_agent.py + a trained model exist)
+Scores whichever policies are present:
+  (s,S)                   classic reorder-point / order-up-to heuristic
+  Q-learning              tabular Q-learning agent
+  DQN                     deep Q-network agent
   DP                      exact optimal policy, knows the demand distribution
-  MILP (rolling forecast) non-anticipative MILP: re-planned every period on a
-                          point forecast -- the implementable "optimisation" baseline
-  MILP (clairvoyant)      perfect foresight, solved once per episode -- an
-                          optimistic lower bound, NOT an implementable policy
-
-The RL part is imported lazily and skipped when absent, so the MILP part can be
-run and demonstrated on its own without torch or a trained network.
-
-Outputs land in results/: episode-level CSV, scenario summaries, figures and a
-JSON file that the slide deck builder reads.
+  MILP (rolling forecast) non-anticipative MILP: re-planned every period on a point forecast
+  MILP (clairvoyant)      perfect foresight lower bound (not implementable)
 """
 
 from __future__ import annotations
@@ -40,16 +31,45 @@ from utils.visualization import (plot_cost_breakdown, plot_cost_comparison,
                                  plot_scenario_costs)
 
 RESULTS = "results"
-METHOD_ORDER = ["DQN", "DP", "MILP (rolling forecast)", "MILP (clairvoyant)"]
+METHOD_ORDER = [
+    "(s,S)",
+    "Q-learning",
+    "DQN",
+    "DP",
+    "MILP (rolling forecast)",
+    "MILP (clairvoyant)",
+]
+
+
+def load_ss_policy(ss_path):
+    try:
+        from algorithms.ss_policy import SSPolicy
+    except ImportError:
+        print("  [skip] (s,S): algorithms/ss_policy.py not present")
+        return None
+    if not os.path.exists(ss_path):
+        print(f"  [skip] (s,S): no tuned parameters at {ss_path}")
+        return None
+    with open(ss_path) as fh:
+        params = json.load(fh)
+    return SSPolicy(params["s"], params["S"])
+
+
+def load_q_agent(cfg, q_path):
+    try:
+        from algorithms.tabular_q_agent import TabularQAgent
+    except ImportError:
+        print("  [skip] Q-learning: algorithms/tabular_q_agent.py not present")
+        return None
+    if not os.path.exists(q_path):
+        print(f"  [skip] Q-learning: no Q-table at {q_path}")
+        return None
+    agent = TabularQAgent(cfg)
+    agent.load(q_path)
+    return agent
 
 
 def load_dqn_agent(cfg, model_path):
-    """Return a trained DQN agent, or None when the RL part is not in this repo.
-
-    Keeping this import local (instead of at module level) is what lets the same
-    harness run in both team members' repositories: with the RL files present it
-    evaluates four methods, without them it evaluates the MILP variants and DP.
-    """
     try:
         from algorithms.dqn_agent import DQNAgent
     except ImportError:
@@ -72,13 +92,6 @@ def make_dqn_policy(agent, cfg):
 
 
 def make_rolling_milp_policy(cfg, forecast_mean, timer, lookahead=5):
-    """Model-predictive use of the MILP: forever re-plan, execute one period.
-
-    Every period we forecast the next `lookahead` demands (a point forecast =
-    the demand mean), solve the lot-sizing MILP for that window, and execute
-    only the FIRST order.  This is non-anticipative -- it never sees the future
-    -- so it is a fair, implementable benchmark against DP and DQN.
-    """
     def policy(t, inventory):
         window = min(lookahead, cfg.horizon - t)
         if window <= 0:
@@ -92,7 +105,7 @@ def make_rolling_milp_policy(cfg, forecast_mean, timer, lookahead=5):
     return policy
 
 
-def evaluate_scenario(scenario_name, cfg, dp, agent, episodes, run_milp=True):
+def evaluate_scenario(scenario_name, cfg, dp, ss_policy, q_agent, dqn_agent, episodes, run_milp=True):
     env = InventoryEnv(cfg, seed=cfg.seed)
     builder = SCENARIOS[scenario_name]
     rows = []
@@ -104,12 +117,17 @@ def evaluate_scenario(scenario_name, cfg, dp, agent, episodes, run_milp=True):
 
         timer = {"planner_time_s": 0.0}
         policies = {}
-        if agent is not None:
-            policies["DQN"] = (make_dqn_policy(agent, cfg), lambda: 0.0)
+        if ss_policy is not None:
+            policies["(s,S)"] = (ss_policy, lambda: 0.0)
+        if q_agent is not None:
+            policies["Q-learning"] = (q_agent.policy(), lambda: 0.0)
+        if dqn_agent is not None:
+            policies["DQN"] = (make_dqn_policy(dqn_agent, cfg), lambda: 0.0)
         policies["DP"] = (lambda t, inv: dp.act(t, inv), lambda: 0.0)
         policies["MILP (rolling forecast)"] = (
             make_rolling_milp_policy(cfg, cfg.demand_lambda, timer),
             lambda: timer["planner_time_s"])
+
         for method, (policy, elapsed) in policies.items():
             out = run_episode(policy, demand_path, cfg)
             out["window_cost"] = float(sum(p["cost"] for p in out["periods"][window]))
@@ -142,7 +160,9 @@ def evaluate_scenario(scenario_name, cfg, dp, agent, episodes, run_milp=True):
 
 
 def evaluate(config=None, episodes=None, scenarios=None, run_milp=True,
-             model_path=os.path.join(RESULTS, "dqn_model.pt")):
+             model_path=os.path.join(RESULTS, "dqn_model.pt"),
+             q_path=os.path.join(RESULTS, "q_table.npy"),
+             ss_path=os.path.join(RESULTS, "ss_params.json")):
     cfg = config or Config()
     n = episodes or cfg.eval_episodes
     scenarios = scenarios or list(SCENARIOS)
@@ -153,11 +173,13 @@ def evaluate(config=None, episodes=None, scenarios=None, run_milp=True,
     dp_value, _ = dp.solve()
     dp_time = time.perf_counter() - t0
 
-    agent = load_dqn_agent(cfg, model_path)
+    ss_policy = load_ss_policy(ss_path)
+    q_agent = load_q_agent(cfg, q_path)
+    dqn_agent = load_dqn_agent(cfg, model_path)
 
     frames, trajectories = [], {}
     for name in scenarios:
-        frame, traj = evaluate_scenario(name, cfg, dp, agent, n, run_milp=run_milp)
+        frame, traj = evaluate_scenario(name, cfg, dp, ss_policy, q_agent, dqn_agent, n, run_milp=run_milp)
         frames.append(frame)
         trajectories[name] = traj
         print(f"  evaluated {name} ({n} episodes)")
@@ -212,13 +234,14 @@ def evaluate(config=None, episodes=None, scenarios=None, run_milp=True,
 
 
 def rebuild_episode_figures(episodes=6):
-    """Regenerate the per-episode trajectory figures without a full evaluation."""
     cfg = Config()
     env = InventoryEnv(cfg, seed=cfg.seed)
     dp = DynamicProgrammingSolver(cfg, env.values, env.pmf)
     dp.solve()
-    agent = load_dqn_agent(cfg, os.path.join(RESULTS, "dqn_model.pt"))
-    _, trajectories = evaluate_scenario("Exp1_stationary", cfg, dp, agent,
+    ss_policy = load_ss_policy(os.path.join(RESULTS, "ss_params.json"))
+    q_agent = load_q_agent(cfg, os.path.join(RESULTS, "q_table.npy"))
+    dqn_agent = load_dqn_agent(cfg, os.path.join(RESULTS, "dqn_model.pt"))
+    _, trajectories = evaluate_scenario("Exp1_stationary", cfg, dp, ss_policy, q_agent, dqn_agent,
                                         episodes, run_milp=True)
     plot_inventory_trajectories(trajectories, os.path.join(RESULTS, "inventory_trajectories.png"))
     plot_order_patterns(trajectories, os.path.join(RESULTS, "order_patterns.png"))
