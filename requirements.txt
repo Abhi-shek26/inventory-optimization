@@ -3,4 +3,4 @@ pandas>=2.0
 matplotlib>=3.7
 scipy>=1.10
 "PuLP>=2.7,<4"
-# torch is only needed by the RL part (algorithms/dqn_agent.py), not by the MILP part
+torch ( only needed by the RL part (algorithms/dqn_agent.py), not by the MILP part )
