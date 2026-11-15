@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 
 METHOD_STYLE = {
+    "(s,S)": "#8e44ad",
+    "Q-learning": "#16a085",
     "DQN": "#2c7fb8",
     "DP": "#31a354",
     "MILP (rolling forecast)": "#f0a202",
